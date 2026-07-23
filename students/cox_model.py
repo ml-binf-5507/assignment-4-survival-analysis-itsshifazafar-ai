@@ -4,9 +4,9 @@ cox_model.py
 Students implement Cox Proportional Hazards regression.
 """
 
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List
+
 import pandas as pd
-import numpy as np
 from lifelines import CoxPHFitter
 from lifelines.statistics import proportional_hazard_test
 
@@ -29,33 +29,74 @@ def fit_cox_model(
         Name of event indicator column (1=event, 0=censored).
     covariates : list of str
         List of covariate column names to include in model.
-        Must contain ≥3 covariates.
+        Must contain at least 3 covariates.
 
     Returns
     -------
     CoxPHFitter
         Fitted Cox model object.
-
-    Example
-    -------
-    >>> covariates = ['age', 'stage', 'treatment', 'biomarker']
-    >>> cox = fit_cox_model(data, 'time', 'event', covariates)
     """
     if len(covariates) < 3:
         raise ValueError("Cox model must include at least 3 covariates")
-    
+
+    required_columns = [time_col, event_col] + covariates
+    missing_columns = [
+        column for column in required_columns
+        if column not in data.columns
+    ]
+
+    if missing_columns:
+        raise KeyError(
+            f"Missing required columns: {missing_columns}"
+        )
+
+    model_data = data[required_columns].copy()
+
+    # Remove rows with missing survival or predictor values
+    model_data = model_data.dropna()
+
+    if model_data.empty:
+        raise ValueError(
+            "No complete observations remain after removing missing values."
+        )
+
+    # Convert event indicator to integer
+    model_data[event_col] = model_data[event_col].astype(int)
+
+    # One-hot encode categorical covariates
+    model_data = pd.get_dummies(
+        model_data,
+        columns=[
+            column
+            for column in covariates
+            if (
+                pd.api.types.is_object_dtype(model_data[column])
+                or isinstance(model_data[column].dtype, pd.CategoricalDtype)
+                or pd.api.types.is_bool_dtype(model_data[column])
+            )
+        ],
+        drop_first=True,
+        dtype=float,
+    )
+
+    # Ensure all columns used by lifelines are numeric
+    for column in model_data.columns:
+        model_data[column] = pd.to_numeric(
+            model_data[column],
+            errors="raise",
+        )
+
     cox = CoxPHFitter()
-
-    model_data = data[[time_col, event_col] + covariates].copy()
-
-    # One-hot encode categorical variables
-    model_data = pd.get_dummies(model_data, drop_first=True)
 
     cox.fit(
         model_data,
         duration_col=time_col,
-        event_col=event_col
+        event_col=event_col,
     )
+
+    # Save the exact encoded data used to fit the model.
+    # This is needed for the proportional hazards test.
+    cox._training_data = model_data.copy()
 
     return cox
 
@@ -72,27 +113,30 @@ def extract_cox_summary(cox_model: Any) -> pd.DataFrame:
     -------
     pd.DataFrame
         Summary table with columns:
-        - covariate: variable name
-        - coef: regression coefficient
-        - exp(coef): hazard ratio
-        - se(coef): standard error
-        - z: z-score
-        - p: p-value
-        - lower 95%: lower CI bound for HR
-        - upper 95%: upper CI bound for HR
-
-    Example
-    -------
-    >>> summary = extract_cox_summary(cox)
-    >>> summary.to_csv('outputs/cox_summary.csv', index=False)
+        - covariate
+        - coef
+        - exp(coef)
+        - se(coef)
+        - z
+        - p
+        - lower 95%
+        - upper 95%
     """
-    summary = cox_model.summary.copy()
+    if not hasattr(cox_model, "summary"):
+        raise TypeError(
+            "cox_model must be a fitted CoxPHFitter object."
+        )
 
-    summary = summary.reset_index().rename(
-        columns={"covariate": "covariate"}
-    )
+    summary = cox_model.summary.copy().reset_index()
 
-    columns = [
+    # Lifelines normally names the reset index column "covariate".
+    # This fallback handles version differences.
+    if "covariate" not in summary.columns:
+        summary = summary.rename(
+            columns={summary.columns[0]: "covariate"}
+        )
+
+    required_columns = [
         "covariate",
         "coef",
         "exp(coef)",
@@ -103,9 +147,17 @@ def extract_cox_summary(cox_model: Any) -> pd.DataFrame:
         "exp(coef) upper 95%",
     ]
 
-    summary = summary[columns]
+    missing_columns = [
+        column for column in required_columns
+        if column not in summary.columns
+    ]
 
-    summary = summary.rename(
+    if missing_columns:
+        raise KeyError(
+            f"Expected Cox summary columns are missing: {missing_columns}"
+        )
+
+    summary = summary[required_columns].rename(
         columns={
             "exp(coef) lower 95%": "lower 95%",
             "exp(coef) upper 95%": "upper 95%",
@@ -113,6 +165,7 @@ def extract_cox_summary(cox_model: Any) -> pd.DataFrame:
     )
 
     return summary
+
 
 def test_proportional_hazards(
     cox_model: Any,
@@ -127,7 +180,8 @@ def test_proportional_hazards(
     cox_model : CoxPHFitter
         Fitted Cox model.
     data : pd.DataFrame
-        Training data used to fit the model.
+        Original survival dataset. This argument is retained to match
+        the assignment function signature.
     time_col : str
         Name of time column.
     event_col : str
@@ -136,41 +190,29 @@ def test_proportional_hazards(
     Returns
     -------
     dict
-        Nested dictionary with test results for each covariate.
-        Format: {
-            'covariate1': {'test_statistic': float, 'p_value': float},
-            'covariate2': {'test_statistic': float, 'p_value': float},
-            ...
-        }
-
-    Notes
-    -----
-    - p-value > 0.05: PH assumption satisfied for that covariate
-    - p-value < 0.05: PH assumption may be violated
-    
-    Example
-    -------
-    >>> ph_test = test_proportional_hazards(cox, data, 'time', 'event')
-    >>> # ph_test = {
-    >>> #     'age': {'test_statistic': 0.85, 'p_value': 0.356},
-    >>> #     'stage': {'test_statistic': 2.41, 'p_value': 0.120}
-    >>> # }
+        Nested dictionary containing test statistics and p-values for
+        each encoded covariate.
     """
-    model_data = data[[time_col, event_col] + list(cox_model.params_.index)].copy()
+    if not hasattr(cox_model, "_training_data"):
+        raise ValueError(
+            "Training data were not stored on the Cox model. "
+            "Refit the model using fit_cox_model()."
+        )
 
-    model_data = pd.get_dummies(model_data, drop_first=True)
+    model_data = cox_model._training_data.copy()
 
     results = proportional_hazard_test(
         cox_model,
         model_data,
-        time_transform="rank"
+        time_transform="rank",
     )
 
-    output = {}
+    output: Dict[str, Dict[str, float]] = {}
 
-    for covariate in results.summary.index:
-        output[covariate] = {
-            "test_statistic": float(results.summary.loc[covariate, "test_statistic"]),
-            "p_value": float(results.summary.loc[covariate, "p"]),
+    for covariate, row in results.summary.iterrows():
+        output[str(covariate)] = {
+            "test_statistic": float(row["test_statistic"]),
+            "p_value": float(row["p"]),
         }
+
     return output
