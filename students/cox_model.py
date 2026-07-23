@@ -7,6 +7,8 @@ Students implement Cox Proportional Hazards regression.
 from typing import Any, Dict, List, Tuple
 import pandas as pd
 import numpy as np
+from lifelines import CoxPHFitter
+from lifelines.statistics import proportional_hazard_test
 
 
 def fit_cox_model(
@@ -42,7 +44,20 @@ def fit_cox_model(
     if len(covariates) < 3:
         raise ValueError("Cox model must include at least 3 covariates")
     
-    raise NotImplementedError("Implement Cox PH model fitting here")
+    cox = CoxPHFitter()
+
+    model_data = data[[time_col, event_col] + covariates].copy()
+
+    # One-hot encode categorical variables
+    model_data = pd.get_dummies(model_data, drop_first=True)
+
+    cox.fit(
+        model_data,
+        duration_col=time_col,
+        event_col=event_col
+    )
+
+    return cox
 
 
 def extract_cox_summary(cox_model: Any) -> pd.DataFrame:
@@ -71,8 +86,33 @@ def extract_cox_summary(cox_model: Any) -> pd.DataFrame:
     >>> summary = extract_cox_summary(cox)
     >>> summary.to_csv('outputs/cox_summary.csv', index=False)
     """
-    raise NotImplementedError("Implement Cox summary extraction here")
+    summary = cox_model.summary.copy()
 
+    summary = summary.reset_index().rename(
+        columns={"covariate": "covariate"}
+    )
+
+    columns = [
+        "covariate",
+        "coef",
+        "exp(coef)",
+        "se(coef)",
+        "z",
+        "p",
+        "exp(coef) lower 95%",
+        "exp(coef) upper 95%",
+    ]
+
+    summary = summary[columns]
+
+    summary = summary.rename(
+        columns={
+            "exp(coef) lower 95%": "lower 95%",
+            "exp(coef) upper 95%": "upper 95%",
+        }
+    )
+
+    return summary
 
 def test_proportional_hazards(
     cox_model: Any,
@@ -116,4 +156,21 @@ def test_proportional_hazards(
     >>> #     'stage': {'test_statistic': 2.41, 'p_value': 0.120}
     >>> # }
     """
-    raise NotImplementedError("Implement PH assumption test here")
+    model_data = data[[time_col, event_col] + list(cox_model.params_.index)].copy()
+
+    model_data = pd.get_dummies(model_data, drop_first=True)
+
+    results = proportional_hazard_test(
+        cox_model,
+        model_data,
+        time_transform="rank"
+    )
+
+    output = {}
+
+    for covariate in results.summary.index:
+        output[covariate] = {
+            "test_statistic": float(results.summary.loc[covariate, "test_statistic"]),
+            "p_value": float(results.summary.loc[covariate, "p"]),
+        }
+    return output
