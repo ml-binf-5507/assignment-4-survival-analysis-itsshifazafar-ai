@@ -4,9 +4,13 @@ random_survival_forest.py
 Students implement Random Survival Forest using scikit-survival.
 """
 
+from fileinput import filename
 from typing import Any, Dict, List, Tuple
 import pandas as pd
 import numpy as np
+from sksurv.ensemble import RandomSurvivalForest
+from sksurv.metrics import concordance_index_censored
+import matplotlib.pyplot as plt
 
 
 def fit_random_survival_forest(
@@ -40,7 +44,15 @@ def fit_random_survival_forest(
     >>> y_train = Surv.from_dataframe('event', 'time', data_train)
     >>> rsf = fit_random_survival_forest(X_train, y_train)
     """
-    raise NotImplementedError("Implement Random Survival Forest fitting here")
+    rsf = RandomSurvivalForest(
+        n_estimators=n_estimators,
+        random_state=random_state,
+        n_jobs=-1
+    )
+
+    rsf.fit(X_train, y_train)
+
+    return rsf
 
 
 def compute_concordance_index(
@@ -70,8 +82,16 @@ def compute_concordance_index(
     >>> c_index = compute_concordance_index(rsf, X_test, y_test)
     >>> print(f"C-index: {c_index:.3f}")
     """
-    raise NotImplementedError("Implement C-index computation here")
+    risk_scores = rsf_model.predict(X_test)
+    c_index = concordance_index_censored(
+        y_test["event"],
+        y_test["time"],
+    risk_scores
+    )[0]
 
+    return float(c_index)
+
+from sklearn.inspection import permutation_importance
 
 def get_feature_importance(
     rsf_model: Any,
@@ -97,7 +117,30 @@ def get_feature_importance(
     >>> importance = get_feature_importance(rsf, X_train.columns.tolist())
     >>> print(importance.head())
     """
-    raise NotImplementedError("Implement feature importance extraction here")
+    if not hasattr(rsf_model, "_X_train") or not hasattr(rsf_model, "_y_train"):
+        raise ValueError(
+            "Training data are unavailable. Store X_train and y_train on the model "
+            "during fitting before calculating permutation importance."
+        )
+
+    result = permutation_importance(
+        rsf_model,
+        rsf_model._X_train,
+        rsf_model._y_train,
+        n_repeats=10,
+        random_state=42,
+        n_jobs=-1
+    )
+
+    importance_df = pd.DataFrame({
+        "feature": feature_names,
+        "importance": result.importances_mean
+    })
+
+    return importance_df.sort_values(
+        by="importance",
+        ascending=False
+    ).reset_index(drop=True)
 
 
 def plot_feature_importance(
@@ -124,4 +167,17 @@ def plot_feature_importance(
     - Sorted by importance (most important at top)
     - Clear title and axis labels
     """
-    raise NotImplementedError("Implement importance plotting here")
+    top_features = importance_df.head(top_n).sort_values(
+        by="importance",
+        ascending=True
+    )
+
+    plt.figure(figsize=(9, 6))
+    plt.barh(top_features["feature"], top_features["importance"])
+
+    plt.title(f"Top {top_n} Random Survival Forest Predictors")
+    plt.xlabel("Permutation Importance")
+    plt.ylabel("Feature")
+    plt.tight_layout()
+    plt.savefig(filename, dpi=300, bbox_inches="tight")
+    plt.close()
