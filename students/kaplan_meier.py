@@ -4,9 +4,15 @@ kaplan_meier.py
 Students implement Kaplan-Meier survival analysis and log-rank test.
 """
 
+from fileinput import filename
 from typing import Dict, Tuple, Any
+from unittest import result
 import pandas as pd
 import numpy as np
+from lifelines import KaplanMeierFitter
+from lifelines.statistics import logrank_test
+import matplotlib.pyplot as plt
+from lifelines.plotting import add_at_risk_counts
 
 
 def fit_kaplan_meier(
@@ -39,7 +45,21 @@ def fit_kaplan_meier(
     >>> km_models = fit_kaplan_meier(data, 'time', 'event', 'treatment')
     >>> # km_models = {'chemo': <KMF>, 'radiation': <KMF>}
     """
-    raise NotImplementedError("Implement Kaplan-Meier fitting here")
+    km_models = {}
+    for group in data[group_col].dropna().unique():
+        subset = data[data[group_col] == group]
+
+        kmf = KaplanMeierFitter()
+
+        kmf.fit(
+        durations=subset[time_col],
+        event_observed=subset[event_col],
+        label=str(group)
+        )
+
+        km_models[str(group)] = kmf
+
+    return km_models
 
 
 def compute_logrank_test(
@@ -71,7 +91,24 @@ def compute_logrank_test(
     >>> result = compute_logrank_test(data, 'time', 'event', 'stage')
     >>> # result = {'test_statistic': 12.34, 'p_value': 0.0004}
     """
-    raise NotImplementedError("Implement log-rank test here")
+    groups = data[group_col].dropna().unique()
+
+    if len(groups) != 2:
+        raise ValueError("Log-rank test requires exactly two groups.")
+
+    group1 = data[data[group_col] == groups[0]]
+    group2 = data[data[group_col] == groups[1]]
+    
+    result = logrank_test(
+        group1[time_col],
+        group2[time_col],
+        event_observed_A=group1[event_col],
+        event_observed_B=group2[event_col]
+    )
+    return {
+        "test_statistic": float(result.test_statistic),
+        "p_value": float(result.p_value)
+    }
 
 
 def plot_km_curves(
@@ -99,4 +136,21 @@ def plot_km_curves(
     - Legend identifying groups
     - Proper axis labels
     """
-    raise NotImplementedError("Implement KM plotting here")
+    plt.figure(figsize=(8, 6))
+    km_list = []
+
+    for label, kmf in km_models.items():
+        kmf.plot_survival_function(ci_show=True)
+        km_list.append(kmf)
+
+    if len(km_list) > 0:
+        add_at_risk_counts(*km_list)
+
+    plt.title(title)
+    plt.xlabel("Time")
+    plt.ylabel("Survival Probability")
+    plt.legend(title="Group")
+    plt.grid(True)
+    plt.tight_layout()
+    plt.savefig(filename, dpi=300)
+    plt.close()
