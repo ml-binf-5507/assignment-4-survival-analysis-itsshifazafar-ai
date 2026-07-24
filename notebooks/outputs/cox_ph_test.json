@@ -1,0 +1,58 @@
+{
+  "Age": {
+    "test_statistic": 11.091238437022607,
+    "p_value": 0.0008673654039000506
+  },
+  "HPV_Yes, positive": {
+    "test_statistic": 6.516686250218568,
+    "p_value": 0.010686694261003778
+  },
+  "Sex_Male": {
+    "test_statistic": 7.5605698842221765,
+    "p_value": 0.0059659123686940764
+  },
+  "Stage_I": {
+    "test_statistic": 1.1545898134078958e-06,
+    "p_value": 0.99914265851535
+  },
+  "Stage_II": {
+    "test_statistic": 6.322906186947328e-07,
+    "p_value": 0.9993655485637929
+  },
+  "Stage_III": {
+    "test_statistic": 1.874207926722698e-07,
+    "p_value": 0.9996545788441425
+  },
+  "Stage_IV": {
+    "test_statistic": 1.31954473010763e-06,
+    "p_value": 0.9990834587318531
+  },
+  "Stage_IVA": {
+    "test_statistic": 1.6492474361324938e-08,
+    "p_value": 0.9998975332482414
+  },
+  "Stage_IVB": {
+    "test_statistic": 1.972551203676326e-08,
+    "p_value": 0.9998879390750524
+  },
+  "Stage_IVC": {
+    "test_statistic": 3.777156992158792e-08,
+    "p_value": 0.9998449318603236
+  },
+  "Tx Modality_ChemoRT ": {
+    "test_statistic": 2.984254403609032e-10,
+    "p_value": 0.9999862165484767
+  },
+  "Tx Modality_Postop RT alone": {
+    "test_statistic": 3.643083975987591e-08,
+    "p_value": 0.999847708855696
+  },
+  "Tx Modality_RT + EGFRI": {
+    "test_statistic": 0.3371956939979361,
+    "p_value": 0.5614524104261603
+  },
+  "Tx Modality_RT alone": {
+    "test_statistic": 1.848386084772393,
+    "p_value": 0.1739712189836217
+  }
+}

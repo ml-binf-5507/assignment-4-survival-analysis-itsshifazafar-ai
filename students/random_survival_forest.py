@@ -52,6 +52,9 @@ def fit_random_survival_forest(
 
     rsf.fit(X_train, y_train)
 
+    rsf._X_train = X_train.copy()
+    rsf._y_train = y_train.copy()
+
     return rsf
 
 
