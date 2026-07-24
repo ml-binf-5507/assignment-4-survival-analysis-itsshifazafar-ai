@@ -130,9 +130,9 @@ def get_feature_importance(
         rsf_model,
         rsf_model._X_train,
         rsf_model._y_train,
-        n_repeats=10,
+        n_repeats=5,
         random_state=42,
-        n_jobs=-1
+        n_jobs=1
     )
 
     importance_df = pd.DataFrame({
